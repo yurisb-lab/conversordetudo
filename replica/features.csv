@@ -1,0 +1,42 @@
+id,funcionalidade,no_original,prioridade,clone,nota
+F01,Juntar PDF,sim,must,yes,aceita também imagens; opção de página em branco para frente e verso
+F02,Dividir PDF,sim,must,yes,cada página / intervalos / a cada N / extrair / ao meio
+F03,Comprimir PDF,sim,must,yes,4 níveis + personalizado; nunca devolve arquivo maior que o original
+F04,PDF para Word,sim,must,partial,texto editável (parágrafos/títulos) ou visual idêntico; layout complexo não é recriado
+F05,PDF para PowerPoint,sim,should,partial,páginas como imagem + texto nas anotações do slide
+F06,PDF para Excel,sim,should,partial,colunas detectadas por espaçamento; tabelas complexas podem desalinhar
+F07,Word para PDF,sim,must,partial,via mammoth + html2pdf; texto/tabelas/imagens ok; páginas viram imagem (texto não selecionável)
+F08,PowerPoint para PDF,sim,should,no,não há conversor confiável de .pptx que rode só no navegador
+F09,Excel para PDF,sim,should,partial,uma aba após a outra; páginas viram imagem
+F10,Editar PDF,sim,must,yes,texto / imagem / cobrir com branco
+F11,PDF para JPG,sim,must,yes,JPG/PNG/WebP com dpi e seleção de páginas
+F12,JPG para PDF,sim,must,yes,inclui HEIC; tamanho de página / orientação / margem
+F13,Assinar PDF,sim,must,yes,desenhar / digitar / imagem com remoção de fundo; assinaturas salvas; data
+F14,Marca d'água,sim,should,yes,texto ou imagem; centro ou mosaico; opacidade e ângulo
+F15,Girar PDF,sim,must,yes,todas / ímpares / pares / escolhidas
+F16,HTML para PDF,sim,could,partial,arquivo .html ou código colado; URL não (bloqueio de CORS do navegador)
+F17,Desbloquear PDF,sim,should,yes,exige a senha de abertura
+F18,Proteger PDF,sim,should,yes,AES-256 com permissões de imprimir/copiar/editar
+F19,Organizar PDF,sim,must,yes,miniaturas com arrastar / girar / duplicar / apagar / página em branco; vários arquivos
+F20,PDF para PDF/A,sim,could,no,validação PDF/A exige ferramenta de servidor
+F21,Reparar PDF,sim,could,partial,reconstrói a estrutura; se falhar recupera como imagem
+F22,Números de página,sim,should,yes,6 posições + lado externo; formatos; pular capa
+F23,Digitalizar para PDF,sim,should,yes,câmera do celular + realce de documento
+F24,OCR PDF,sim,should,yes,Tesseract no navegador; PDF pesquisável + .txt; 7 idiomas
+F25,Comparar PDF,sim,could,partial,diferença de texto lado a lado (não compara visual)
+F26,Tarjar PDF,sim,should,yes,manual + busca automática por palavras / CPF / CNPJ / e-mail / telefone / RG; remove o texto de verdade
+F27,Recortar PDF,sim,could,yes,arrastar área; todas as páginas ou só uma
+F28,Traduzir PDF,sim,could,no,exigiria serviço externo de IA
+F29,Encadear ferramentas,sim,should,yes,"""Continuar com o resultado"" com sugestões priorizadas"
+F30,Limites de tamanho/tarefas,sim (limite),must,yes,melhoria: sem limite — processamento local
+F31,Upload para servidor,sim,—,yes,melhoria: nenhum arquivo sai do aparelho
+X01,Metadados do PDF,não,extra,yes,editar ou apagar título/autor
+X02,PDF em preto e branco,não,extra,yes,
+X03,Achatar formulário,não,extra,yes,
+X04,PDF para texto,não,extra,yes,
+X05,Texto para PDF,não,extra,yes,
+X06,Imagem: converter/comprimir/redimensionar/recortar/girar/HEIC/SVG/EXIF/marca d'água/filtros,não,extra,yes,10 ferramentas
+X07,Vídeo: converter/comprimir/cortar/GIF/extrair áudio/sem som/resolução/girar/velocidade/quadros,não,extra,yes,10 ferramentas via ffmpeg.wasm
+X08,Áudio: converter/comprimir/cortar/volume/velocidade/juntar,não,extra,yes,6 ferramentas via ffmpeg.wasm
+X09,Planilhas e ZIP: converter planilha/compactar/extrair,não,extra,yes,
+X10,Busca Ctrl+K / favoritas / histórico / tema escuro / colar com Ctrl+V,não,extra,yes,

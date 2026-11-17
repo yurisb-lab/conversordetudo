@@ -112,7 +112,7 @@ input[type="range"]{width:100%;accent-color:var(--c-primary)}
 .range-row output{min-width:48px;text-align:right;font-variant-numeric:tabular-nums;font-weight:650;font-size:var(--fs-sm)}
 
 /* ============ HOME ============ */
-.hero{padding:var(--s-8) 0 var(--s-6);text-align:center}
+.hero{padding:var(--s-7) 0 var(--s-4);text-align:center}
 .hero h1{font-size:var(--fs-3xl);line-height:1.1;letter-spacing:-.03em;margin:0 auto var(--s-3);max-width:820px}
 .hero h1 em{font-style:normal;color:var(--c-primary)}
 .hero p{font-size:var(--fs-lg);color:var(--c-text-2);max-width:680px;margin:0 auto var(--s-5)}
@@ -145,6 +145,33 @@ input[type="range"]{width:100%;accent-color:var(--c-primary)}
 .fav[aria-pressed="true"]{color:var(--c-warning)}
 .fav[aria-pressed="true"] svg{fill:currentColor}
 .tag-new{position:absolute;top:var(--s-4);right:52px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:var(--r-full);background:var(--c-success-soft);color:var(--c-success)}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s-4)}
+.cat-block{position:relative;background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-xl);padding:var(--s-5);display:flex;flex-direction:column;gap:var(--s-3);transition:transform .15s,box-shadow .15s,border-color .15s}
+.cat-block::before{content:"";position:absolute;inset:0 0 auto;height:4px;border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--cc)}
+.cat-block:hover{transform:translateY(-2px);box-shadow:var(--sh-2);border-color:var(--c-border-strong)}
+.cat-top{display:flex;align-items:center;gap:var(--s-3)}
+.cat-top .tool-ico{width:52px;height:52px;border-radius:var(--r-lg)}
+.cat-top .tool-ico svg{width:28px;height:28px}
+.cat-top>div:nth-child(2){flex:1;min-width:0;display:flex;flex-direction:column}
+.cat-block a.stretch{color:var(--c-text);text-decoration:none;font-weight:800;font-size:var(--fs-lg);line-height:1.25}
+.cat-block a.stretch::after{content:"";position:absolute;inset:0;border-radius:var(--r-xl)}
+.cat-block a.stretch:focus-visible{box-shadow:none}
+.cat-block:has(a.stretch:focus-visible){box-shadow:var(--focus)}
+.cat-count{font-size:var(--fs-xs);color:var(--c-text-3);font-weight:600}
+.cat-go{color:var(--c-text-3);transition:transform .15s,color .15s}
+.cat-block:hover .cat-go{transform:translateX(3px);color:var(--cc)}
+.cat-block p{margin:0;color:var(--c-text-2);font-size:var(--fs-sm)}
+.cat-links{display:flex;flex-wrap:wrap;gap:var(--s-2);position:relative;z-index:1}
+.cat-links a{font-size:var(--fs-xs);font-weight:650;color:var(--c-text-2);text-decoration:none;padding:4px 10px;border-radius:var(--r-full);background:var(--c-surface-2);border:1px solid transparent}
+.cat-links a:hover{border-color:var(--cc);color:var(--c-text)}
+.quick{display:flex;flex-wrap:wrap;gap:var(--s-2)}
+.quick a,.cat-tabs a{display:inline-flex;align-items:center;gap:var(--s-2);padding:var(--s-2) var(--s-3);border-radius:var(--r-full);border:1px solid var(--c-border);background:var(--c-surface);color:var(--c-text);text-decoration:none;font-weight:600;font-size:var(--fs-sm);white-space:nowrap}
+.quick a:hover,.cat-tabs a:hover{border-color:var(--c-border-strong)}
+.quick .dot,.cat-tabs .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.cat-tabs{display:flex;gap:var(--s-2);overflow-x:auto;padding:2px 2px var(--s-2);margin:0 0 var(--s-2);scrollbar-width:thin}
+.cat-tabs a[aria-current="page"]{background:var(--c-text);border-color:var(--c-text);color:var(--c-bg)}
+.sec-title svg{width:20px;height:20px}
+@media (max-width:640px){.cat-grid{grid-template-columns:1fr;gap:var(--s-2)}.cat-block{padding:var(--s-3) var(--s-4);border-radius:var(--r-lg)}.cat-block::before{inset:0 auto 0 0;width:4px;height:auto;border-radius:var(--r-lg) 0 0 var(--r-lg)}.cat-block p,.cat-block .cat-links{display:none}.cat-top .tool-ico{width:44px;height:44px}.cat-block a.stretch{font-size:var(--fs-md)}}
 .empty{text-align:center;padding:var(--s-8) var(--s-4);color:var(--c-text-2)}
 .empty svg{width:48px;height:48px;color:var(--c-text-3);margin-bottom:var(--s-3)}
 .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--s-4);margin:var(--s-8) 0}
@@ -154,7 +181,7 @@ input[type="range"]{width:100%;accent-color:var(--c-primary)}
 .feature .fi{width:40px;height:40px;border-radius:var(--r-md);background:var(--c-primary-soft);color:var(--c-primary);display:grid;place-items:center}
 
 /* ============ TOOL PAGE ============ */
-.crumbs{display:flex;gap:var(--s-2);align-items:center;font-size:var(--fs-sm);color:var(--c-text-3);padding-top:var(--s-5)}
+.crumbs{display:flex;flex-wrap:wrap;gap:var(--s-2);align-items:center;font-size:var(--fs-sm);color:var(--c-text-3);padding-top:var(--s-5)}
 .crumbs a{color:var(--c-text-2);text-decoration:none}
 .crumbs a:hover{text-decoration:underline}
 .tool-head{display:flex;gap:var(--s-4);align-items:center;margin:var(--s-4) 0 var(--s-5)}
@@ -582,15 +609,49 @@ const mimeOf = ext => MIME[ext] || 'application/octet-stream';
 const kindOf = name => { const e = extOf(name); for (const k of ['pdf', 'img', 'video', 'audio']) if (EXT[k].includes(e)) return k; return 'other'; };
 
 /* ---------- categorias ---------- */
+/* groups: subdivisões na página da categoria (o que sobrar vai para "Outras")
+   top: atalhos mostrados no bloco da página inicial */
 const CATS = [
-  { id: 'pdf', name: 'Organizar e editar PDF', short: 'PDF', color: 'var(--cat-pdf)' },
-  { id: 'conv', name: 'Converter PDF', short: 'Converter PDF', color: 'var(--cat-conv)' },
-  { id: 'img', name: 'Imagem', short: 'Imagem', color: 'var(--cat-img)' },
-  { id: 'video', name: 'Vídeo', short: 'Vídeo', color: 'var(--cat-video)' },
-  { id: 'audio', name: 'Áudio', short: 'Áudio', color: 'var(--cat-audio)' },
-  { id: 'dados', name: 'Planilhas, texto e ZIP', short: 'Planilhas e mais', color: 'var(--cat-dados)' }
+  { id: 'pdf', name: 'Organizar e editar PDF', short: 'PDF', color: 'var(--cat-pdf)', icon: 'pdf',
+    desc: 'Juntar, dividir, comprimir, assinar, editar e proteger PDFs.',
+    top: ['juntar-pdf', 'comprimir-pdf', 'dividir-pdf', 'assinar-pdf'],
+    groups: [
+      { name: 'Organizar páginas', ids: ['juntar-pdf', 'dividir-pdf', 'organizar-pdf', 'remover-paginas', 'girar-pdf', 'recortar-pdf'] },
+      { name: 'Editar e assinar', ids: ['editar-pdf', 'assinar-pdf', 'numerar-paginas', 'marca-dagua-pdf', 'tarjar-pdf'] },
+      { name: 'Diminuir e otimizar', ids: ['comprimir-pdf', 'comprimir-tamanho', 'pdf-cinza', 'achatar-pdf', 'reparar-pdf'] },
+      { name: 'Segurança e informações', ids: ['proteger-pdf', 'desbloquear-pdf', 'metadados-pdf', 'comparar-pdf'] }
+    ] },
+  { id: 'conv', name: 'Converter PDF', short: 'Converter PDF', color: 'var(--cat-conv)', icon: 'convert',
+    desc: 'PDF para Word, Excel, PowerPoint e imagem, e o caminho inverso.',
+    top: ['pdf-para-word', 'imagem-para-pdf', 'pdf-para-jpg', 'word-para-pdf'],
+    groups: [
+      { name: 'Do PDF para outro formato', ids: ['pdf-para-word', 'pdf-para-excel', 'pdf-para-powerpoint', 'pdf-para-jpg', 'pdf-para-texto'] },
+      { name: 'De outro formato para PDF', ids: ['word-para-pdf', 'excel-para-pdf', 'imagem-para-pdf', 'digitalizar-pdf', 'html-para-pdf', 'texto-para-pdf'] },
+      { name: 'Reconhecer texto', ids: ['ocr-pdf'] }
+    ] },
+  { id: 'img', name: 'Imagem', short: 'Imagem', color: 'var(--cat-img)', icon: 'image',
+    desc: 'Remover fundo, extrair texto, converter, comprimir e redimensionar.',
+    top: ['remover-fundo', 'comprimir-imagem', 'converter-imagem', 'imagem-para-texto'],
+    groups: [
+      { name: 'Com inteligência artificial', ids: ['remover-fundo', 'imagem-para-texto'] },
+      { name: 'Converter e diminuir', ids: ['converter-imagem', 'comprimir-imagem', 'comprimir-tamanho', 'heic-para-jpg', 'svg-para-png'] },
+      { name: 'Editar', ids: ['redimensionar-imagem', 'recortar-imagem', 'girar-imagem', 'ajustar-imagem', 'marca-dagua-imagem', 'remover-metadados-imagem'] }
+    ] },
+  { id: 'video', name: 'Vídeo', short: 'Vídeo', color: 'var(--cat-video)', icon: 'video',
+    desc: 'Converter, comprimir, cortar, virar GIF e extrair o áudio.',
+    top: ['comprimir-video', 'converter-video', 'cortar-video', 'extrair-audio'] },
+  { id: 'audio', name: 'Áudio', short: 'Áudio', color: 'var(--cat-audio)', icon: 'music',
+    desc: 'Transcrever, converter, cortar, ajustar volume e juntar.',
+    top: ['transcrever-audio', 'converter-audio', 'cortar-audio', 'juntar-audio'] },
+  { id: 'dados', name: 'Planilhas, texto e ZIP', short: 'Planilhas e ZIP', color: 'var(--cat-dados)', icon: 'sheet',
+    desc: 'Converter planilhas, compactar e extrair arquivos ZIP.',
+    top: ['converter-planilha', 'compactar-zip', 'extrair-zip'] }
 ];
 const catColor = id => (CATS.find(c => c.id === id) || CATS[0]).color;
+const findCat = id => CATS.find(c => c.id === id);
+/* uma ferramenta pode aparecer em mais de uma categoria (campo "also") */
+const inCat = (t, id) => t.cat === id || (t.also || []).includes(id);
+const catTools = id => TOOLS.filter(t => inCat(t, id));
 
 /* ferramentas são registradas na próxima parte */
 const TOOLS = [];
@@ -614,7 +675,7 @@ function acceptsFile(t, name) { const l = acceptList(t); return !l.length || l.i
 const S = {
   route: '', tool: null, files: [], opts: {}, stage: 'upload',
   results: [], report: '', error: null, progress: { v: 0, msg: '' }, cancel: null, carry: null,
-  q: '', cat: 'all', edit: null
+  q: '', edit: null
 };
 const favs = () => db.ler('favoritos', []);
 
@@ -627,6 +688,7 @@ function render(nav = false) {
   const app = $('#app');
   $$('[data-nav]').forEach(a => a.removeAttribute('aria-current'));
   if (!r) { $('[data-nav=home]').setAttribute('aria-current', 'page'); viewHome(app); document.title = 'Conversor de Tudo — PDF, imagem, vídeo e áudio direto no navegador'; }
+  else if (r === 'c' && findCat(arg)) { $('[data-nav=home]').setAttribute('aria-current', 'page'); viewCategory(app, findCat(arg)); document.title = findCat(arg).name + ' — Conversor de Tudo'; }
   else if (r === 'f' && findTool(arg)) { viewTool(app, findTool(arg), nav); }
   else if (r === 'historico') { $('[data-nav=historico]').setAttribute('aria-current', 'page'); viewHistory(app); document.title = 'Histórico — Conversor de Tudo'; }
   else if (r === 'sobre') { $('[data-nav=sobre]').setAttribute('aria-current', 'page'); viewAbout(app); document.title = 'Como funciona — Conversor de Tudo'; }
@@ -644,24 +706,33 @@ function toolCard(t, fav) {
     <button class="fav" type="button" data-action="fav" data-id="${t.id}" aria-pressed="${fav.includes(t.id)}" aria-label="${fav.includes(t.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}: ${esc(t.name)}">${svg('star')}</button>
   </div>`;
 }
+function catBlock(c) {
+  const n = catTools(c.id).length;
+  const top = (c.top || []).map(findTool).filter(Boolean);
+  return `<div class="cat-block" style="--cc:${c.color}">
+    <div class="cat-top"><div class="tool-ico" style="background:${c.color}">${svg(c.icon, '')}</div>
+      <div><a class="stretch" href="#/c/${c.id}">${esc(c.name)}</a><span class="cat-count">${n} ferramenta${n !== 1 ? 's' : ''}</span></div>
+      <span class="cat-go" aria-hidden="true">${svg('down')}</span></div>
+    <p>${esc(c.desc)}</p>
+    ${top.length ? `<div class="cat-links" aria-label="Mais usadas em ${esc(c.short)}">${top.map(t => `<a href="#/f/${t.id}">${esc(t.name)}</a>`).join('')}</div>` : ''}
+  </div>`;
+}
+function recentTools(max = 6) {
+  const seen = []; for (const h of db.listar('historico')) { const t = findTool(h.tool); if (t && !seen.includes(t)) seen.push(t); if (seen.length >= max) break; }
+  return seen;
+}
 function viewHome(app) {
   const already = $('#home-q', app);
   if (!already) {
     app.innerHTML = `<section class="wrap">
       <div class="hero">
         <h1>Todo arquivo, <em>do jeito que você precisa</em>.</h1>
-        <p>PDF, imagem, vídeo, áudio e planilhas: junte, divida, comprima, converta e edite. Tudo acontece no seu navegador — nada é enviado para servidor nenhum.</p>
-        <div class="badges">
-          <span class="badge">${svg('infinity')} Sem limite de arquivos ou tamanho</span>
-          <span class="badge">${svg('shield')} Arquivos não saem do seu aparelho</span>
-          <span class="badge">${svg('bolt')} Sem cadastro, sem anúncio</span>
-        </div>
+        <p>PDF, imagem, vídeo, áudio e planilhas. Tudo acontece no seu navegador — nada é enviado para servidor nenhum.</p>
         <div class="home-search">${svg('info').replace(IC.info, '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')}
           <label for="home-q" class="sr-only">Buscar ferramenta</label>
-          <input id="home-q" type="search" placeholder="Buscar: juntar pdf, mp4 para mp3, heic…" autocomplete="off">
+          <input id="home-q" type="search" placeholder="Buscar: juntar pdf, mp4 para mp3, remover fundo…" autocomplete="off">
         </div>
       </div>
-      <div class="chips" role="group" aria-label="Filtrar por categoria" id="chips"></div>
       <div id="home-list"></div>
       <div class="features">
         <div class="feature"><div class="fi">${svg('shield')}</div><h3>Privado de verdade</h3><p>O processamento é feito pelo seu próprio aparelho. Contratos, documentos e fotos nunca passam pela internet.</p></div>
@@ -676,20 +747,43 @@ function viewHome(app) {
   renderHomeList();
 }
 function renderHomeList() {
+  const box = $('#home-list'); if (!box) return;
   const fav = favs();
-  $('#chips').innerHTML = [{ id: 'all', short: 'Todas' }, ...CATS].map(c => `<button class="chip" type="button" data-action="cat" data-cat="${c.id}" aria-pressed="${S.cat === c.id}">${esc(c.short)}</button>`).join('');
-  let list = searchTools(S.q);
-  if (S.cat !== 'all') list = list.filter(t => t.cat === S.cat);
   let html = '';
-  const favTools = fav.map(findTool).filter(Boolean);
-  if (!S.q && S.cat === 'all' && favTools.length) html += `<h2 class="sec-title">${svg('star')} Favoritas</h2><div class="grid">${favTools.map(t => toolCard(t, fav)).join('')}</div>`;
-  if (!list.length) html += `<div class="empty">${svg('info')}<p><b>Nenhuma ferramenta para "${esc(S.q)}".</b><br>Tente outra palavra, como "comprimir", "mp3" ou "assinar".</p></div>`;
-  else if (S.q || S.cat !== 'all') html += `<h2 class="sec-title">${list.length} ferramenta${list.length > 1 ? 's' : ''}</h2><div class="grid">${list.map(t => toolCard(t, fav)).join('')}</div>`;
-  else for (const c of CATS) {
-    const l = list.filter(t => t.cat === c.id);
-    html += `<h2 class="sec-title"><span class="tool-ico" style="background:${c.color};width:28px;height:28px;border-radius:8px"></span>${esc(c.name)} <small>${l.length}</small></h2><div class="grid">${l.map(t => toolCard(t, fav)).join('')}</div>`;
+  if (S.q.trim()) {
+    const list = searchTools(S.q);
+    html = list.length
+      ? `<h2 class="sec-title">${list.length} ferramenta${list.length > 1 ? 's' : ''} para "${esc(S.q.trim())}"</h2><div class="grid">${list.map(t => toolCard(t, fav)).join('')}</div>`
+      : `<div class="empty">${svg('info')}<p><b>Nenhuma ferramenta para "${esc(S.q)}".</b><br>Tente outra palavra, como "comprimir", "mp3" ou "assinar".</p></div>`;
+  } else {
+    const favTools = fav.map(findTool).filter(Boolean);
+    if (favTools.length) html += `<h2 class="sec-title">${svg('star')} Favoritas</h2><div class="grid">${favTools.map(t => toolCard(t, fav)).join('')}</div>`;
+    const rec = recentTools().filter(t => !favTools.includes(t));
+    if (rec.length) html += `<h2 class="sec-title">${svg('history')} Usadas recentemente</h2><div class="quick">${rec.map(t => `<a href="#/f/${t.id}"><span class="dot" style="background:${catColor(t.cat)}"></span>${esc(t.name)}</a>`).join('')}</div>`;
+    html += `<h2 class="sec-title">O que você quer fazer?</h2><div class="cat-grid">${CATS.map(catBlock).join('')}</div>`;
   }
-  $('#home-list').innerHTML = html;
+  box.innerHTML = html;
+}
+
+/* ---------- PÁGINA DE CATEGORIA ---------- */
+function viewCategory(app, c) {
+  const fav = favs();
+  const all = catTools(c.id);
+  const used = new Set();
+  const sections = [];
+  for (const g of c.groups || []) {
+    const l = g.ids.map(findTool).filter(t => t && inCat(t, c.id));
+    l.forEach(t => used.add(t));
+    if (l.length) sections.push({ name: g.name, list: l });
+  }
+  const rest = all.filter(t => !used.has(t));
+  if (rest.length) sections.push({ name: sections.length ? 'Outras' : '', list: rest });
+  app.innerHTML = `<section class="wrap" style="padding-bottom:var(--s-8)">
+    <nav class="crumbs" aria-label="Você está em"><a href="#/">Ferramentas</a><span aria-hidden="true">›</span><span>${esc(c.short)}</span></nav>
+    <div class="tool-head"><div class="tool-ico" style="background:${c.color}">${svg(c.icon, '')}</div><div><h1>${esc(c.name)}</h1><p>${esc(c.desc)}</p></div></div>
+    <nav class="cat-tabs" aria-label="Categorias">${CATS.map(x => `<a href="#/c/${x.id}" ${x === c ? 'aria-current="page"' : ''}><span class="dot" style="background:${x.color}"></span>${esc(x.short)}</a>`).join('')}</nav>
+    ${sections.map(s => `${s.name ? `<h2 class="sec-title">${esc(s.name)} <small>${s.list.length}</small></h2>` : ''}<div class="grid">${s.list.map(t => toolCard(t, fav)).join('')}</div>`).join('')}
+  </section>`;
 }
 
 /* ---------- TELA DE FERRAMENTA ---------- */
@@ -716,7 +810,7 @@ function viewTool(app, t, nav) {
   if (S.stage === 'done') body = resultHTML(t);
   if (S.stage === 'error') body = errorHTML(t);
   app.innerHTML = `<div class="wrap">
-    <nav class="crumbs" aria-label="Você está em"><a href="#/">Ferramentas</a><span aria-hidden="true">›</span><span>${esc(cat.short)}</span></nav>
+    <nav class="crumbs" aria-label="Você está em"><a href="#/">Ferramentas</a><span aria-hidden="true">›</span><a href="#/c/${cat.id}">${esc(cat.short)}</a><span aria-hidden="true">›</span><span>${esc(t.name)}</span></nav>
     ${S.stage === 'done' ? '' : `<div class="tool-head"><div class="tool-ico" style="background:${catColor(t.cat)}">${svg(t.icon, '')}</div><div><h1>${esc(t.name)}</h1><p>${esc(t.long || t.desc)}</p></div></div>`}
     <div id="stage">${body}</div>
   </div>`;
@@ -1003,9 +1097,8 @@ document.addEventListener('click', async e => {
       const id = el.dataset.id; let f = favs();
       f = f.includes(id) ? f.filter(x => x !== id) : [...f, id]; db.gravar('favoritos', f);
       toast(f.includes(id) ? 'Adicionada às favoritas.' : 'Removida das favoritas.');
-      renderHomeList(); const again = $(`[data-action=fav][data-id="${id}"]`); if (again) again.focus(); break;
+      if ($('#home-list')) renderHomeList(); else render(); const again = $(`[data-action=fav][data-id="${id}"]`); if (again) again.focus(); break;
     }
-    case 'cat': S.cat = el.dataset.cat; renderHomeList(); { const b = $(`[data-cat="${S.cat}"]`); if (b) b.focus(); } break;
     case 'rm': { const f = S.files.splice(+el.dataset.idx, 1)[0]; if (f && f.url) URL.revokeObjectURL(f.url); if (!S.files.length) S.stage = 'upload'; S.edit = null; rerender(); break; }
     case 'clear': S.files = []; S.stage = 'upload'; S.edit = null; rerender(); break;
     case 'mv': { const i = +el.dataset.idx, j = i + +el.dataset.dir; if (j < 0 || j >= S.files.length) return; [S.files[i], S.files[j]] = [S.files[j], S.files[i]]; rerender(); const b = $(`[data-action=mv][data-idx="${j}"][data-dir="${el.dataset.dir}"]`); if (b) b.focus(); break; }

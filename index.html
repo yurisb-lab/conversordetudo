@@ -312,6 +312,17 @@ audio.media-prev{background:transparent}
 .diff h4{font-family:var(--font);margin:var(--s-2) 0;font-size:var(--fs-sm)}
 @media (max-width:640px){.diff{grid-template-columns:1fr}}
 
+.text-block{text-align:left;margin-top:var(--s-4)}
+.text-block .tb-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);margin-bottom:var(--s-2)}
+.text-block h3{margin:0;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+textarea.text-out{min-height:240px;font-family:var(--font);font-size:var(--fs-md);line-height:1.6;white-space:pre-wrap}
+.previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s-3);margin-top:var(--s-4)}
+.previews figure{margin:0}
+.previews img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:var(--r-md);border:1px solid var(--c-border);background:repeating-conic-gradient(#E4E4EE 0% 25%,#FFFFFF 0% 50%) 50%/18px 18px}
+.previews figcaption{font-size:var(--fs-xs);color:var(--c-text-3);margin-top:var(--s-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-text{max-width:560px;margin:var(--s-4) auto 0;text-align:left;font-size:var(--fs-sm);color:var(--c-text-2);max-height:160px;overflow:auto;white-space:pre-wrap;background:var(--c-surface-2);border-radius:var(--r-md);padding:var(--s-3)}
+.live-text:empty{display:none}
+
 /* history / about */
 .page-title{font-size:var(--fs-2xl);margin:var(--s-6) 0 var(--s-2);letter-spacing:-.02em}
 .table-wrap{overflow-x:auto;border:1px solid var(--c-border);border-radius:var(--r-lg);background:var(--c-surface)}
@@ -390,6 +401,132 @@ footer.foot a{color:var(--c-text-2)}
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <input type="file" id="file-in" class="hidden" multiple>
 <input type="file" id="cam-in" class="hidden" accept="image/*" capture="environment">
+<script type="text/plain" id="ai-worker-src">
+/* Worker de IA (módulo). Roda remoção de fundo e transcrição fora da tela principal.
+   Os modelos são baixados do Hugging Face na primeira vez e ficam no cache do navegador. */
+let T = null;
+const lib = async () => T || (T = await import('__TRANSFORMERS__'));
+const M = {};
+let gpu = null;
+async function hasGPU() {
+  if (gpu !== null) return gpu;
+  try { gpu = !!(self.navigator && navigator.gpu && await navigator.gpu.requestAdapter()); } catch { gpu = false; }
+  return gpu;
+}
+function dl(id) {
+  const files = new Map();
+  return p => {
+    if (p.status === 'progress' && p.total) {
+      files.set(p.file, [p.loaded, p.total]);
+      let l = 0, t = 0; for (const [a, b] of files.values()) { l += a; t += b; }
+      postMessage({ type: 'progress', id, phase: 'download', loaded: l, total: t });
+    } else if (p.status === 'ready') postMessage({ type: 'progress', id, phase: 'load' });
+  };
+}
+async function free(prefix, keep) {
+  for (const k of Object.keys(M)) if (k.startsWith(prefix) && k !== keep) { try { const m = M[k]; await (m.model || m.pipe || m).dispose(); } catch {} delete M[k]; }
+}
+
+/* ---------- remoção de fundo ---------- */
+async function getSeg(id, quality) {
+  const key = 'seg-' + quality; if (M[key]) return M[key];
+  await free('seg-', key);
+  const { AutoModel, pipeline } = await lib();
+  const tries = quality === 'max' ? [['webgpu', 'fp32'], ['wasm', 'fp32'], ['wasm', 'q8']] : [['wasm', 'q8']];
+  let last = null;
+  for (const [device, dtype] of tries) {
+    if (device === 'webgpu' && !(await hasGPU())) continue;
+    try {
+      const model = await AutoModel.from_pretrained('briaai/RMBG-1.4', { config: { model_type: 'custom' }, device, dtype, progress_callback: dl(id) });
+      return M[key] = { kind: 'rmbg', model };
+    } catch (e) { last = e; }
+  }
+  try { // reserva: MODNet (ótimo para pessoas)
+    const pipe = await pipeline('background-removal', 'Xenova/modnet', { device: 'wasm', progress_callback: dl(id) });
+    return M[key] = { kind: 'modnet', pipe };
+  } catch (e) { throw last || e; }
+}
+async function runSeg(msg) {
+  const { Tensor, RawImage } = await lib();
+  const S = msg.size, px = msg.data, seg = await getSeg(msg.id, msg.quality);
+  postMessage({ type: 'progress', id: msg.id, phase: 'run' });
+  const mask = new Uint8ClampedArray(S * S);
+  if (seg.kind === 'rmbg') {
+    const n = S * S, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = px[i * 4] / 255 - 0.5; f[i + n] = px[i * 4 + 1] / 255 - 0.5; f[i + 2 * n] = px[i * 4 + 2] / 255 - 0.5; }
+    const name = seg.model.sessions.model.inputNames[0];
+    const out = await seg.model({ [name]: new Tensor('float32', f, [1, 3, S, S]) });
+    const d = Object.values(out)[0].data;
+    let mn = Infinity, mx = -Infinity; for (let i = 0; i < n; i++) { const v = d[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    const r = mx - mn || 1; for (let i = 0; i < n; i++) mask[i] = (d[i] - mn) / r * 255;
+  } else {
+    const [res] = await seg.pipe(new RawImage(px, S, S, 4));
+    const im = (res.width === S && res.height === S) ? res : await res.resize(S, S);
+    const c = im.channels; for (let i = 0; i < S * S; i++) mask[i] = im.data[i * c + c - 1];
+  }
+  postMessage({ type: 'done', id: msg.id, mask, model: seg.kind }, [mask.buffer]);
+}
+
+/* ---------- transcrição (Whisper) ---------- */
+async function getAsr(id, size) {
+  const key = 'asr-' + size; if (M[key]) return M[key];
+  await free('asr-', key);
+  const { pipeline } = await lib();
+  const repo = 'onnx-community/whisper-' + size;
+  const tries = [];
+  if (await hasGPU()) tries.push({ device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' } });
+  tries.push({ device: 'wasm', dtype: 'q8' });
+  let last = null;
+  for (const t of tries) {
+    try { return M[key] = await pipeline('automatic-speech-recognition', repo, { ...t, progress_callback: dl(id) }); }
+    catch (e) { last = e; }
+  }
+  throw last;
+}
+async function runAsr(msg) {
+  const asr = await getAsr(msg.id, msg.size);
+  const SR = 16000, audio = msg.audio, MAX = 29 * SR, MIN = 20 * SR, WIN = SR / 10;
+  const segs = []; let pos = 0;
+  while (pos < audio.length) {
+    let end = Math.min(audio.length, pos + MAX);
+    if (end < audio.length) { // corta no trecho mais silencioso para não partir palavras
+      let best = end, bestE = Infinity;
+      for (let s = pos + MIN; s + WIN <= end; s += WIN / 2) { let e = 0; for (let k = s; k < s + WIN; k += 4) e += audio[k] * audio[k]; if (e < bestE) { bestE = e; best = s + WIN / 2; } }
+      end = Math.floor(best);
+    }
+    segs.push([pos, end]); pos = end;
+  }
+  const chunks = [];
+  for (let i = 0; i < segs.length; i++) {
+    const [a, b] = segs[i];
+    postMessage({ type: 'progress', id: msg.id, phase: 'asr', i, n: segs.length, at: a / SR });
+    const part = audio.subarray(a, b);
+    let rms = 0; for (let k = 0; k < part.length; k += 8) rms += part[k] * part[k]; rms = Math.sqrt(rms / (part.length / 8));
+    if (rms < 0.003) continue; // silêncio: o Whisper costuma "inventar" texto aqui
+    const opts = { task: 'transcribe', return_timestamps: true };
+    if (msg.lang && msg.lang !== 'auto') opts.language = msg.lang;
+    const r = await asr(part, opts);
+    const list = r.chunks && r.chunks.length ? r.chunks : [{ timestamp: [0, (b - a) / SR], text: r.text }];
+    for (const c of list) {
+      const t = (c.text || '').trim(); if (!t) continue;
+      const s0 = c.timestamp[0] ?? 0, e0 = c.timestamp[1] ?? (b - a) / SR;
+      chunks.push({ start: a / SR + s0, end: a / SR + Math.min(e0, (b - a) / SR), text: t });
+    }
+    postMessage({ type: 'progress', id: msg.id, phase: 'asr', i: i + 1, n: segs.length, at: b / SR, text: chunks.map(c => c.text).join(' ') });
+  }
+  postMessage({ type: 'done', id: msg.id, chunks });
+}
+
+self.onmessage = async e => {
+  const msg = e.data;
+  try {
+    if (msg.type === 'seg') await runSeg(msg);
+    else if (msg.type === 'asr') await runAsr(msg);
+  } catch (err) {
+    postMessage({ type: 'error', id: msg.id, message: String(err && (err.message || err)) });
+  }
+};
+</script>
 <script>
 'use strict';
 /* =========================================================
@@ -534,7 +671,11 @@ const IC = {
   wifi: '<path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2-1.5M12 20h.01"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
   blank: '<rect x="5" y="3" width="14" height="18" rx="2"/>',
-  bw: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>'
+  bw: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>',
+  cutout: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="10" r="2.5"/><path d="M7.5 17a4.5 4.5 0 0 1 9 0"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>'
 };
 const svg = (name, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[name] || IC.pdf}</svg>`;
 
@@ -568,6 +709,52 @@ function loadLib(name) {
   return libPromises[name];
 }
 const libs = (...names) => Promise.all(names.map(loadLib));
+
+/* ---------- IA local (transformers.js num Web Worker) ---------- */
+const TRANSFORMERS_URL = CDN + '@huggingface/transformers@3.8.1/dist/transformers.min.js';
+const AI = { w: null, seq: 0, pending: new Map() };
+function aiReset() {
+  if (AI.w) AI.w.terminate(); AI.w = null;
+  for (const p of AI.pending.values()) p.reject(new Error('__cancel'));
+  AI.pending.clear();
+}
+function aiWorker() {
+  if (AI.w) return AI.w;
+  const src = $('#ai-worker-src').textContent.replace('__TRANSFORMERS__', TRANSFORMERS_URL);
+  const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+  const w = new Worker(url, { type: 'module' });
+  w.onmessage = e => {
+    const m = e.data, p = AI.pending.get(m.id); if (!p) return;
+    if (m.type === 'progress') { try { p.onProgress && p.onProgress(m); } catch {} return; }
+    AI.pending.delete(m.id);
+    if (m.type === 'error') p.reject(aiError(m.message)); else p.resolve(m);
+  };
+  w.onerror = e => { e.preventDefault && e.preventDefault(); const err = aiError(e.message || 'worker'); for (const p of AI.pending.values()) p.reject(err); AI.pending.clear(); AI.w = null; w.terminate(); };
+  return AI.w = w;
+}
+function aiError(msg) {
+  msg = String(msg || '');
+  let e;
+  if (/fetch|network|Failed to load|import|404|401|403|Could not locate file|Unauthorized/i.test(msg)) e = new UserError('Não foi possível baixar o modelo de inteligência artificial.', 'Confira sua conexão (só é preciso internet na primeira vez) e tente de novo. Bloqueadores de conteúdo podem impedir o download de huggingface.co.');
+  else if (/memory|allocation|OOM|out of bounds/i.test(msg)) e = new UserError('O aparelho ficou sem memória para rodar a inteligência artificial.', 'Feche outras abas, use o modelo mais leve ou tente em um computador.');
+  else e = new UserError('A inteligência artificial não conseguiu processar este arquivo.', 'Tente de novo; se continuar, use outro navegador (Chrome ou Edge atualizados funcionam melhor).');
+  e.detail = msg; return e;
+}
+/* envia uma tarefa ao worker; onProgress recebe {phase, loaded, total, ...} */
+function aiCall(msg, transfer, onProgress, ctx) {
+  if (typeof Worker === 'undefined') return Promise.reject(new UserError('Seu navegador não suporta esta ferramenta.', 'Use uma versão recente do Chrome, Edge, Firefox ou Safari.'));
+  const w = aiWorker(); const id = ++AI.seq;
+  return new Promise((resolve, reject) => {
+    AI.pending.set(id, { resolve, reject, onProgress });
+    if (ctx) ctx.onCancel = () => aiReset();
+    w.postMessage({ ...msg, id }, transfer || []);
+  });
+}
+function aiDownloadMsg(m) {
+  if (m.phase === 'download') { setProgress(m.total ? m.loaded / m.total : 0, `Baixando o modelo de IA: ${fmtSize(m.loaded)} de ${fmtSize(m.total)} (só na primeira vez)`); return true; }
+  if (m.phase === 'load') { setProgress(0, 'Preparando o modelo de IA…'); return true; }
+  return false;
+}
 
 /* ---------- camada de dados (localStorage; mesma interface de uma futura nuvem) ---------- */
 const db = {
@@ -627,7 +814,7 @@ const CATS = [
     groups: [
       { name: 'Do PDF para outro formato', ids: ['pdf-para-word', 'pdf-para-excel', 'pdf-para-powerpoint', 'pdf-para-jpg', 'pdf-para-texto'] },
       { name: 'De outro formato para PDF', ids: ['word-para-pdf', 'excel-para-pdf', 'imagem-para-pdf', 'digitalizar-pdf', 'html-para-pdf', 'texto-para-pdf'] },
-      { name: 'Reconhecer texto', ids: ['ocr-pdf'] }
+      { name: 'Reconhecer texto', ids: ['ocr-pdf', 'imagem-para-texto'] }
     ] },
   { id: 'img', name: 'Imagem', short: 'Imagem', color: 'var(--cat-img)', icon: 'image',
     desc: 'Remover fundo, extrair texto, converter, comprimir e redimensionar.',
@@ -895,6 +1082,7 @@ function workingHTML() {
     <h2 style="margin:0" id="w-title">Processando…</h2>
     <div class="bar ${S.progress.v ? '' : 'indeterminate'}" id="w-bar"><i style="width:${Math.round(S.progress.v * 100)}%"></i></div>
     <p class="muted small" id="w-msg">${esc(S.progress.msg || 'Isso acontece no seu aparelho; arquivos grandes podem levar um tempo.')}</p>
+    <div class="live-text" id="w-live" aria-live="off"></div>
     <button class="btn btn-sm" data-action="cancel">Cancelar</button>
   </div>`;
 }
@@ -1073,7 +1261,7 @@ async function runTool() {
 }
 function friendlyError(e) {
   const m = String(e && (e.message || e)) || '';
-  if (e && e.userFacing) return { message: m, hint: e.hint };
+  if (e && e.userFacing) return { message: m, hint: e.hint, detail: e.detail };
   if (/encrypt|password/i.test(m) || (e && /PasswordException/.test(e.name))) return { message: 'Este PDF está protegido por senha.', hint: 'Use a ferramenta <a href="#/f/desbloquear-pdf">Desbloquear PDF</a> primeiro e depois volte aqui.', detail: m };
   if (/Invalid PDF|No PDF header|Failed to parse/i.test(m)) return { message: 'O arquivo não parece ser um PDF válido ou está danificado.', hint: 'Tente a ferramenta <a href="#/f/reparar-pdf">Reparar PDF</a>.', detail: m };
   if (/memory|allocation|Array buffer allocation|OOM/i.test(m)) return { message: 'O aparelho ficou sem memória para processar esse arquivo.', hint: 'Feche outras abas, tente arquivos menores por vez ou use um computador.', detail: m };
@@ -1123,6 +1311,11 @@ document.addEventListener('click', async e => {
     case 'settime': { const mp = $('#media-prev'); if (mp) { S.opts[el.dataset.opt] = fmtTime(mp.currentTime); const inp = $('#o-' + el.dataset.opt); if (inp) inp.value = S.opts[el.dataset.opt]; } break; }
     case 'hist-clear': if (await dialog({ title: 'Limpar histórico?', html: '<p>Isso apaga apenas a lista. Nenhum arquivo é guardado aqui.</p>', ok: 'Limpar', danger: true })) { db.limpar('historico'); render(); } break;
     case 'hist-rm': db.remover('historico', el.dataset.id); render(); break;
+    case 'copy': {
+      const ta = document.getElementById(el.dataset.target); if (!ta) break;
+      try { await navigator.clipboard.writeText(ta.value); } catch { ta.focus(); ta.select(); document.execCommand('copy'); }
+      toast('Texto copiado.'); break;
+    }
   }
 });
 function uniqueName(n, used) { let name = n, i = 2; while (used.has(name)) name = `${baseName(n)} (${i++}).${extOf(n)}`; used.add(name); return name; }
@@ -1219,6 +1412,8 @@ function viewAbout(app) {
     <p>Serviços online cobram por processar seus arquivos nos servidores deles, por isso limitam tamanho, quantidade e tarefas por hora. Aqui o "servidor" é o seu aparelho: o único limite é a memória dele. Arquivos de vários gigas funcionam melhor em computador.</p>
     <h2>Então precisa de internet?</h2>
     <p>Só para abrir o site e, na primeira vez que usa certas ferramentas, baixar o componente que faz o trabalho (por exemplo, o motor de vídeo tem cerca de 31 MB). Depois disso o navegador guarda esse componente em cache.</p>
+    <h2>E as ferramentas com inteligência artificial?</h2>
+    <p>Remover fundo e Transcrever áudio usam modelos de IA abertos (RMBG e Whisper) que rodam no seu aparelho. Na primeira vez o modelo é baixado do Hugging Face (de 40 a 250 MB) e fica guardado no navegador. Suas fotos e áudios continuam sem sair do aparelho. Em computadores com placa de vídeo compatível (WebGPU) tudo fica bem mais rápido.</p>
     <h2>O que fica salvo?</h2>
     <ul><li>Suas preferências (tema, favoritas, últimas opções de cada ferramenta).</li><li>O histórico com nomes e tamanhos dos arquivos — você pode apagar a qualquer momento.</li><li>Assinaturas que você escolher salvar, para reutilizar.</li></ul>
     <p>Tudo isso fica no armazenamento local do navegador, neste aparelho.</p>
@@ -2277,10 +2472,10 @@ async function applyPlacedItems(d, E) {
 }
 /* imagem -> dataURL PNG (reduzida) */
 async function fileToPngDataURL(file, max = 1200) { const img = await decodeImage(file); const cv = imgToCanvas(img, { maxW: max, maxH: max }); return { src: cv.toDataURL('image/png'), aspect: cv.height / cv.width }; }
-function trimCanvas(cv) { // recorta as bordas transparentes de uma assinatura
+function trimCanvas(cv, thr = 10) { // recorta as bordas transparentes (assinatura, foto sem fundo)
   const cx = cv.getContext('2d'); const { width: w, height: h } = cv; const d = cx.getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = 0, y1 = 0;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > thr) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < x0) return null;
   const p = 6; x0 = Math.max(0, x0 - p); y0 = Math.max(0, y0 - p); x1 = Math.min(w - 1, x1 + p); y1 = Math.min(h - 1, y1 + p);
   const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1; o.getContext('2d').drawImage(cv, x0, y0, o.width, o.height, 0, 0, o.width, o.height); return o;
@@ -2743,6 +2938,178 @@ tool({
   }
 });
 
+/* =================== IMAGEM: IA, TEXTO E TAMANHO EXATO =================== */
+function textBlocksHTML(items) {
+  return items.map((it, i) => `<div class="text-block"><div class="tb-head"><h3 title="${esc(it.title)}">${esc(it.title)}</h3><button class="btn btn-sm" type="button" data-action="copy" data-target="txt-${i}">${svg('copy')} Copiar</button></div><textarea class="input text-out" id="txt-${i}" aria-label="Texto de ${esc(it.title)}">${esc(it.text)}</textarea></div>`).join('');
+}
+const OCR_LANGS = [{ v: 'por', l: 'Português' }, { v: 'por+eng', l: 'Português + Inglês' }, { v: 'eng', l: 'Inglês' }, { v: 'spa', l: 'Espanhol' }, { v: 'fra', l: 'Francês' }, { v: 'deu', l: 'Alemão' }, { v: 'ita', l: 'Italiano' }];
+
+tool({
+  id: 'remover-fundo', cat: 'img', icon: 'cutout', name: 'Remover fundo', action: 'Remover fundo',
+  desc: 'Tire o fundo de fotos com inteligência artificial e baixe em PNG transparente.',
+  long: 'A inteligência artificial separa a pessoa ou o objeto do fundo, direto no seu aparelho. Baixe em PNG transparente ou com uma cor de fundo.',
+  keys: 'remover tirar apagar fundo background transparente png recorte ia inteligencia artificial produto foto perfil', accept: ['img'], dropLabel: 'imagens', zipName: 'sem-fundo',
+  next: ['redimensionar-imagem', 'comprimir-imagem', 'converter-imagem'],
+  note: 'Na primeira vez baixamos o modelo de IA (~45 MB no modo normal). Depois ele fica no cache do navegador e cada foto leva poucos segundos.',
+  options: [
+    { id: 'bg', label: 'Fundo', type: 'seg', def: 'transp', choices: [{ v: 'transp', l: 'Transparente' }, { v: 'color', l: 'Cor sólida' }] },
+    { id: 'color', label: 'Cor do fundo', type: 'color', def: '#ffffff', showIf: o => o.bg === 'color' },
+    { id: 'fmt', label: 'Formato', type: 'seg', def: 'png', choices: [{ v: 'png', l: 'PNG' }, { v: 'webp', l: 'WebP' }, { v: 'jpg', l: 'JPG' }], hint: 'JPG não tem transparência: com fundo transparente ele sai com fundo branco.' },
+    { id: 'trim', label: 'Recortar as sobras (deixar só o objeto)', type: 'check', def: false },
+    { id: 'quality', label: 'Precisão', type: 'seg', def: 'normal', choices: [{ v: 'normal', l: 'Normal (~45 MB)' }, { v: 'max', l: 'Máxima (~180 MB)' }], hint: 'A máxima recorta melhor cabelo e bordas finas, mas o download é maior.' }
+  ],
+  async run(files, o, ctx) {
+    const out = [], previews = []; let usedModel = '';
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]; const label = `Removendo o fundo${files.length > 1 ? ` (${i + 1}/${files.length})` : ''}: ${f.name}`;
+      ctx.progress(i / files.length, label);
+      const img = await decodeImage(f.file);
+      const full = imgToCanvas(img, { maxW: 6000, maxH: 6000 });
+      const S = 1024;
+      const sm = document.createElement('canvas'); sm.width = sm.height = S;
+      const sx = sm.getContext('2d'); sx.imageSmoothingQuality = 'high'; sx.drawImage(full, 0, 0, S, S);
+      const data = sx.getImageData(0, 0, S, S).data;
+      const r = await aiCall({ type: 'seg', quality: o.quality, size: S, data }, [data.buffer], m => { if (!aiDownloadMsg(m) && m.phase === 'run') setProgress(i / files.length, label); }, ctx);
+      ctx.check(); usedModel = r.model;
+      // máscara 1024×1024 -> tamanho original, com bordas um pouco mais firmes
+      const mk = new ImageData(S, S);
+      for (let k = 0; k < S * S; k++) { const a = r.mask[k] / 255; mk.data[k * 4 + 3] = clamp((a - 0.04) / 0.92, 0, 1) * 255; }
+      const mc = document.createElement('canvas'); mc.width = mc.height = S; mc.getContext('2d').putImageData(mk, 0, 0);
+      let cv = document.createElement('canvas'); cv.width = full.width; cv.height = full.height;
+      const cx = cv.getContext('2d'); cx.drawImage(full, 0, 0); cx.globalCompositeOperation = 'destination-in'; cx.imageSmoothingQuality = 'high'; cx.drawImage(mc, 0, 0, cv.width, cv.height);
+      full.width = 0;
+      if (o.trim) cv = trimCanvas(cv, 60) || cv;
+      if (o.bg === 'color') { const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height; const x2 = c2.getContext('2d'); x2.fillStyle = o.color; x2.fillRect(0, 0, c2.width, c2.height); x2.drawImage(cv, 0, 0); cv = c2; }
+      const blob = await encodeCanvas(cv, o.fmt, 0.92, o.bg === 'color' ? o.color : '#ffffff');
+      out.push({ name: outName(f, 'sem-fundo', o.fmt), blob, note: `${cv.width}×${cv.height}` });
+      previews.push({ url: URL.createObjectURL(blob), name: f.name });
+    }
+    ctx.report(`<div class="previews">${previews.map(p => `<figure><img src="${p.url}" alt="Resultado de ${esc(p.name)}"><figcaption>${esc(p.name)}</figcaption></figure>`).join('')}</div>`);
+    if (usedModel === 'modnet') ctx.note('Usamos o modelo reserva (especializado em pessoas). Para objetos, o resultado pode ficar menos preciso.', 'warn');
+    return out;
+  }
+});
+
+tool({
+  id: 'imagem-para-texto', cat: 'img', also: ['conv'], icon: 'ocr', name: 'Imagem para texto', action: 'Extrair texto',
+  desc: 'Copie o texto de prints, fotos de documentos e imagens (OCR).',
+  long: 'Reconhece o texto de prints, fotos de documentos, cartazes e imagens. O resultado aparece na tela, pronto para copiar.',
+  keys: 'ocr extrair copiar texto print foto imagem ler reconhecer escrita documento captura tela', accept: ['img'], dropLabel: 'imagens',
+  note: 'Na primeira vez baixamos o motor de reconhecimento (~5 MB) e o idioma (~2 a 4 MB). Funciona melhor com texto nítido e bem iluminado.',
+  options: [
+    { id: 'lang', label: 'Idioma do texto', type: 'select', def: 'por', choices: OCR_LANGS },
+    { id: 'join', label: 'Juntar o texto de todas as imagens em um só arquivo', type: 'check', def: true }
+  ],
+  async run(files, o, ctx) {
+    await libs('tesseract');
+    ctx.progress(null, 'Preparando o reconhecimento de texto…');
+    const worker = await Tesseract.createWorker(o.lang, 1, {
+      workerPath: CDN + 'tesseract.js@5.1.1/dist/worker.min.js', corePath: CDN + 'tesseract.js-core@5.1.1',
+      logger: m => { if (m.status === 'loading language traineddata') setProgress(m.progress, 'Baixando idioma'); }
+    });
+    ctx.onCancel = () => worker.terminate();
+    const items = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]; ctx.progress(i / files.length, `Lendo ${f.name}`);
+        const img = await decodeImage(f.file);
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        const k = Math.min(w < 1400 ? 2 : 1, 5000 / w, 5000 / h); // prints pequenos: ampliar ajuda o OCR
+        const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+        const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, cv.width, cv.height);
+        const { data } = await worker.recognize(cv);
+        cv.width = 0;
+        items.push({ title: f.name, text: data.text.replace(/\n{3,}/g, '\n\n').trim() });
+      }
+    } finally { worker.terminate(); }
+    const empty = items.filter(it => !it.text).length;
+    if (empty === items.length) throw new UserError('Não encontramos texto nas imagens.', 'Confira o idioma escolhido e se o texto está nítido. Fotos tortas ou escuras atrapalham o reconhecimento.');
+    if (empty) ctx.note(`${empty} imagem(ns) não tinha(m) texto reconhecível.`, 'warn');
+    ctx.report(textBlocksHTML(items.length > 1 && o.join ? [{ title: 'Texto de todas as imagens', text: items.map(it => `===== ${it.title} =====\n${it.text}`).join('\n\n') }] : items));
+    const txt = t => new Blob(['﻿' + t], { type: 'text/plain;charset=utf-8' });
+    if (items.length > 1 && o.join) return [{ name: 'texto-das-imagens.txt', blob: txt(items.map(it => `===== ${it.title} =====\n${it.text}`).join('\n\n')) }];
+    return items.map((it, i) => ({ name: outName(files[i], '', 'txt').replace(/-\.(\w+)$/, '.$1'), blob: txt(it.text) }));
+  }
+});
+
+tool({
+  id: 'comprimir-tamanho', cat: 'img', also: ['pdf'], icon: 'target', name: 'Comprimir até um tamanho', action: 'Comprimir', showSaving: true,
+  desc: 'Deixe imagens e PDFs abaixo de um limite exato, como 500 KB ou 2 MB.',
+  long: 'Para sites e formulários que recusam arquivos grandes: escolha o limite e ajustamos qualidade e resolução até o arquivo caber, com a melhor qualidade possível.',
+  keys: 'comprimir reduzir diminuir tamanho maximo limite kb mb formulario gov upload enviar peso exato 100kb 200kb 500kb 1mb 2mb', accept: ['img', 'pdf'], dropLabel: 'imagens ou PDFs', zipName: 'reduzidos',
+  options: [
+    { id: 'target', label: 'Tamanho máximo', type: 'select', def: '500', choices: [{ v: '100', l: '100 KB' }, { v: '200', l: '200 KB' }, { v: '300', l: '300 KB' }, { v: '500', l: '500 KB' }, { v: '1000', l: '1 MB' }, { v: '2000', l: '2 MB' }, { v: '5000', l: '5 MB' }, { v: '10000', l: '10 MB' }, { v: 'custom', l: 'Outro valor…' }] },
+    { id: 'num', label: 'Valor', type: 'number', def: 400, min: 10, step: 10, showIf: o => o.target === 'custom' },
+    { id: 'unit', label: 'Unidade', type: 'seg', def: 'KB', choices: [{ v: 'KB', l: 'KB' }, { v: 'MB', l: 'MB' }], showIf: o => o.target === 'custom' },
+    { id: 'imgFmt', label: 'Formato das imagens', type: 'select', def: 'auto', choices: [{ v: 'auto', l: 'Automático (JPG, ou WebP se tiver transparência)' }, { v: 'jpg', l: 'Sempre JPG (mais compatível)' }, { v: 'webp', l: 'Sempre WebP (menor)' }] }
+  ],
+  validate(o) { if (o.target === 'custom' && !(+o.num > 0)) return 'Informe o tamanho máximo.'; },
+  async run(files, o, ctx) {
+    const kb = o.target === 'custom' ? +o.num * (o.unit === 'MB' ? 1000 : 1) : +o.target;
+    const T = Math.floor(kb * 1000); // 1 KB = 1000 bytes: cabe também em sites que contam 1024
+    const label = kb >= 1000 ? (kb / 1000).toLocaleString('pt-BR') + ' MB' : kb.toLocaleString('pt-BR') + ' KB';
+    const out = []; let kept = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]; const base = i / files.length, step = 1 / files.length;
+      if (f.size <= T) { kept++; out.push({ name: f.name, blob: f.file, note: `já estava abaixo de ${label}` }); continue; }
+      if (kindOf(f.name) === 'pdf') out.push(await pdfToSize(f, T, label, ctx, base, step));
+      else out.push(await imageToSize(f, T, o.imgFmt, ctx, base, step));
+    }
+    if (kept) ctx.note(`${kept} arquivo(s) já estava(m) abaixo de ${label} e foi(ram) mantido(s) sem alteração.`, 'ok');
+    return out;
+  }
+});
+async function imageToSize(f, T, fmtOpt, ctx, base, step) {
+  ctx.progress(base, 'Analisando ' + f.name);
+  const img = await decodeImage(f.file);
+  let cv = imgToCanvas(img);
+  let fmt = fmtOpt === 'auto' ? 'jpg' : fmtOpt;
+  if (fmtOpt === 'auto' && /png|webp|gif|svg|avif|ico/.test(extOf(f.name))) { // tem transparência de verdade?
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    for (let k = 3; k < d.length; k += 4 * 7) if (d[k] < 250) { fmt = 'webp'; break; }
+  }
+  const enc = q => encodeCanvas(cv, fmt, q);
+  let scale = 1;
+  for (let round = 0; round < 12; round++) {
+    ctx.progress(base + step * Math.min(0.9, round / 6), `Ajustando ${f.name}${scale < 1 ? ` (${cv.width}×${cv.height})` : ''}`);
+    const hi = await enc(0.92);
+    if (hi.size <= T) return done(hi);
+    const lo = await enc(0.4);
+    if (lo.size <= T) { // busca a maior qualidade que cabe
+      let a = 0.4, b = 0.92, best = lo;
+      for (let k = 0; k < 6; k++) { const m = (a + b) / 2; const r = await enc(m); if (r.size <= T) { best = r; a = m; } else b = m; }
+      return done(best);
+    }
+    scale *= clamp(Math.sqrt(T / lo.size) * 0.92, 0.3, 0.9);
+    const w = Math.round((img.naturalWidth || img.width) * scale), h = Math.round((img.naturalHeight || img.height) * scale);
+    if (w < 48 || h < 48) break;
+    cv.width = 0; cv = imgToCanvas(img, { maxW: w, maxH: h });
+  }
+  throw new UserError(`Não foi possível deixar "${f.name}" tão pequeno sem destruir a imagem.`, 'Escolha um limite maior.');
+  function done(b) { return { name: outName(f, 'reduzido', fmt), blob: b, note: `${cv.width}×${cv.height}` }; }
+}
+async function pdfToSize(f, T, label, ctx, base, step) {
+  ctx.progress(base, `Otimizando ${f.name} sem perdas`);
+  const d0 = await loadPdf(f); d0.setProducer(''); d0.setCreator('');
+  const b0 = await d0.save({ useObjectStreams: true });
+  if (b0.length <= T) return { name: outName(f, 'reduzido', 'pdf'), blob: pdfBlob(b0), note: 'sem perdas · texto continua selecionável' };
+  // do melhor para o pior; busca binária pelo primeiro que cabe
+  const P = [[150, 0.8], [130, 0.72], [110, 0.65], [96, 0.58], [84, 0.5], [72, 0.42], [60, 0.35], [50, 0.3], [40, 0.25], [40, 0.25, 1], [32, 0.2, 1]];
+  const cache = {}; let n = 0;
+  const attempt = async idx => {
+    if (cache[idx]) return cache[idx];
+    const [dpi, q, gray] = P[idx]; n++;
+    const d = await rasterizePdf(f, { dpi, quality: q, filter: gray ? 'grayscale(1)' : null, ctx: { progress: (v, m) => ctx.progress(base + step * Math.min(0.95, (n - 1 + v) / 5), m) }, label: `Tentativa ${n} (${dpi} dpi${gray ? ', cinza' : ''})` });
+    return cache[idx] = await d.save({ useObjectStreams: true });
+  };
+  let a = 0, b = P.length - 1, best = null;
+  if ((await attempt(b)).length > T) throw new UserError(`Mesmo na compressão máxima, "${f.name}" fica com ${fmtSize(cache[b].length)}, acima de ${label}.`, 'Escolha um limite maior ou divida o PDF em partes com <a href="#/f/dividir-pdf">Dividir PDF</a>.');
+  best = b;
+  while (a < b) { const m = (a + b) >> 1; if ((await attempt(m)).length <= T) { best = m; b = m; } else a = m + 1; }
+  const [dpi, , gray] = P[best];
+  return { name: outName(f, 'reduzido', 'pdf'), blob: pdfBlob(cache[best]), note: `${dpi} dpi${gray ? ' em tons de cinza' : ''} · páginas viraram imagem` };
+}
+
 /* =================== VÍDEO E ÁUDIO (ffmpeg no navegador) =================== */
 const FF = { inst: null, urls: null, logs: [], onProgress: null };
 async function fetchBlobURL(url, type, onp) {
@@ -2994,6 +3361,69 @@ tool({
   async run(files, o, ctx) {
     const blob = await ffRun(ctx, files, n => [...n.flatMap(x => ['-i', x]), '-filter_complex', n.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=stereo[a${i}]`).join(';') + ';' + n.map((_, i) => `[a${i}]`).join('') + `concat=n=${n.length}:v=0:a=1[out]`, '-map', '[out]', ...ACODEC[o.fmt](o.br)], 'out.' + o.fmt, mimeOf(o.fmt), 'Juntando ' + files.length + ' áudios');
     return [{ name: (o.name || 'audios-unidos') + '.' + o.fmt, blob }];
+  }
+});
+
+/* =================== TRANSCRIÇÃO (Whisper, IA local) =================== */
+async function decodeAudio16k(f, ctx) {
+  const toMono = async buf => {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const ab = await new OAC(1, 1, 16000).decodeAudioData(buf);
+    if (ab.numberOfChannels === 1) return new Float32Array(ab.getChannelData(0));
+    const out = new Float32Array(ab.length);
+    for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) out[i] += d[i] / ab.numberOfChannels; }
+    return out;
+  };
+  ctx.progress(null, 'Lendo o áudio de ' + f.name);
+  try { return await toMono(await f.file.arrayBuffer()); }
+  catch { // formato que o navegador não abre sozinho: extrai com o ffmpeg
+    const wav = await ffRun(ctx, [f], n => ['-i', n[0], '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le'], 'out.wav', 'audio/wav', 'Extraindo o áudio de ' + f.name);
+    return await toMono(await wav.arrayBuffer());
+  }
+}
+const srtTime = t => { const ms = Math.round(t * 1000); const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
+const clockTime = t => { t = Math.floor(t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s).padStart(2, '0'); };
+function chunksToText(chunks, stamps) {
+  if (stamps) return chunks.map(c => `[${clockTime(c.start)}] ${c.text}`).join('\n');
+  let s = '', prev = null;
+  for (const c of chunks) { if (prev) s += (c.start - prev.end > 2 || /[.!?]$/.test(prev.text) && s.length - s.lastIndexOf('\n') > 600) ? '\n\n' : ' '; s += c.text; prev = c; }
+  return s.trim();
+}
+const chunksToSrt = chunks => chunks.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(Math.max(c.end, c.start + 0.5))}\n${c.text}\n`).join('\n');
+tool({
+  id: 'transcrever-audio', cat: 'audio', also: ['video'], icon: 'mic', name: 'Transcrever áudio e vídeo', action: 'Transcrever',
+  desc: 'Transforme áudios do WhatsApp, reuniões, aulas e vídeos em texto ou legenda (.srt).',
+  long: 'A inteligência artificial Whisper ouve o áudio e escreve o texto, direto no seu aparelho. Também gera legendas .srt com os horários.',
+  keys: 'transcrever transcricao texto fala voz audio whatsapp reuniao aula entrevista podcast legenda srt ditado whisper ia inteligencia artificial', accept: ['audio', 'video'], dropLabel: 'áudios ou vídeos',
+  note: 'Na primeira vez baixamos o modelo de IA (40 a 250 MB, conforme a precisão). Com placa de vídeo compatível (WebGPU) é bem mais rápido; sem ela, conte de 1 a 3 minutos de processamento para cada 10 minutos de áudio no modo equilibrado.',
+  options: [
+    { id: 'size', label: 'Precisão', type: 'seg', def: 'base', choices: [{ v: 'tiny', l: 'Rápida' }, { v: 'base', l: 'Equilibrada' }, { v: 'small', l: 'Alta' }], hint: 'Rápida ≈ 40 MB · Equilibrada ≈ 80 MB · Alta ≈ 250 MB (bem melhor para português, porém mais lenta).' },
+    { id: 'lang', label: 'Idioma falado', type: 'select', def: 'pt', choices: [{ v: 'pt', l: 'Português' }, { v: 'en', l: 'Inglês' }, { v: 'es', l: 'Espanhol' }, { v: 'fr', l: 'Francês' }, { v: 'it', l: 'Italiano' }, { v: 'de', l: 'Alemão' }, { v: 'auto', l: 'Detectar automaticamente' }] },
+    { id: 'out', label: 'Gerar', type: 'select', def: 'txt', choices: [{ v: 'txt', l: 'Texto (.txt)' }, { v: 'srt', l: 'Legenda (.srt)' }, { v: 'both', l: 'Texto + legenda' }] },
+    { id: 'stamps', label: 'Mostrar os horários no texto', type: 'check', def: false, showIf: o => o.out !== 'srt' }
+  ],
+  async run(files, o, ctx) {
+    const out = [], items = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]; const tag = files.length > 1 ? ` (${i + 1}/${files.length})` : '';
+      const audio = await decodeAudio16k(f, ctx); ctx.check();
+      const dur = audio.length / 16000;
+      if (dur < 0.3) throw new UserError(`"${f.name}" não tem áudio.`);
+      const live = $('#w-live');
+      const r = await aiCall({ type: 'asr', size: o.size, lang: o.lang, audio }, [audio.buffer], m => {
+        if (aiDownloadMsg(m)) return;
+        if (m.phase === 'asr') { setProgress(m.n ? Math.max(0.01, m.i / m.n) : 0, `Transcrevendo${tag}: ${clockTime(m.at)} de ${clockTime(dur)}`); if (m.text != null && live) { live.textContent = m.text.slice(-1500); live.scrollTop = live.scrollHeight; } }
+      }, ctx);
+      ctx.check();
+      if (!r.chunks.length) throw new UserError(`Não encontramos fala em "${f.name}".`, 'Confira se o áudio tem voz audível e se o idioma escolhido está certo.');
+      const text = chunksToText(r.chunks, o.stamps);
+      items.push({ title: f.name, text });
+      if (o.out !== 'srt') out.push({ name: outName(f, 'transcricao', 'txt'), blob: new Blob(['﻿' + text], { type: 'text/plain;charset=utf-8' }), note: clockTime(dur) + ' de áudio' });
+      if (o.out !== 'txt') out.push({ name: outName(f, '', 'srt').replace(/-\.(\w+)$/, '.$1'), blob: new Blob([chunksToSrt(r.chunks)], { type: 'application/x-subrip;charset=utf-8' }), note: r.chunks.length + ' legendas' });
+    }
+    ctx.report(textBlocksHTML(items));
+    ctx.note('A transcrição automática pode errar nomes próprios e palavras pouco comuns. Revise antes de usar — dá para corrigir direto na caixa de texto abaixo antes de copiar.', '');
+    return out;
   }
 });
 
